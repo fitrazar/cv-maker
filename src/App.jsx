@@ -5,6 +5,7 @@ import NotFound from "@components/Error/NotFound";
 import ErrorBoundary from "@components/Error/ErrorBoundary";
 import LandingLayout from "@layouts/LandingLayout";
 import Home from "@pages/Home";
+import Template from "@pages/Template";
 
 function App() {
   const router = createBrowserRouter([
@@ -13,6 +14,11 @@ function App() {
       element: <LandingLayout />,
       children: [
         { path: "/", element: <Home />, errorElement: <ErrorBoundary /> },
+        {
+          path: "/template/:id",
+          element: <Template />,
+          errorElement: <ErrorBoundary />,
+        },
         { path: "*", element: <NotFound /> },
       ],
     },

@@ -7,8 +7,7 @@ const LandingLayout = () => {
   return (
     <>
       <ScrollTop />
-      {/* <Dock />
-      <Navbar /> */}
+      <Navbar />
       <div className="p-4 ">
         <Outlet />
       </div>
