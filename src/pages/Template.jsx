@@ -1,116 +1,184 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router";
 import { PDFDownloadLink, PDFViewer } from "@react-pdf/renderer";
 import Template1 from "@components/Templates/Template1";
 
+const STORAGE_KEY = "cv-maker-data";
+
+const defaultData = {
+  name: "",
+  role: "",
+  address: "",
+  email: "",
+  phone: "",
+  linkedin: "",
+  github: "",
+  profile: "",
+  expertise: [""],
+  experience: [
+    {
+      title: "",
+      category: "",
+      location: "",
+      from: "",
+      to: "",
+      description: [""],
+    },
+  ],
+  education: [{ title: "", institution: "", location: "", from: "", to: "" }],
+  certifications: [{ title: "", note: "", date: "" }],
+  skills: [{ title: "", percent: 0 }],
+};
+
 const Template = () => {
   const { id } = useParams();
 
-  const [data, setData] = useState({
-    name: "",
-    role: "",
-    address: "",
-    email: "",
-    phone: "",
-    linkedin: "",
-    github: "",
-    profile: "",
-    expertise: [""],
-    experience: [
-      {
-        title: "",
-        category: "",
-        location: "",
-        from: "",
-        to: "",
-        description: [""],
-      },
-    ],
-    education: [{ title: "", institution: "", location: "", from: "", to: "" }],
-    certifications: [{ title: "", note: "", date: "" }],
-    skills: [{ title: "", percent: 0 }],
+  // Load from localStorage on mount, fallback to defaultData
+  const [data, setData] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : defaultData;
+    } catch {
+      return defaultData;
+    }
   });
 
-  // helper untuk handle perubahan input biasa
-  const handleChange = (field, value) => {
-    setData({ ...data, [field]: value });
-  };
+  // Auto-save to localStorage whenever data changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // Storage full or unavailable — silently ignore
+    }
+  }, [data]);
 
-  // helper untuk handle array field
-  const handleArrayChange = (section, index, field, value) => {
-    const newArr = [...data[section]];
-    newArr[index][field] = value;
-    setData({ ...data, [section]: newArr });
-  };
+  // ── basic field ──────────────────────────────────────────────────────────
+  const handleChange = useCallback((field, value) => {
+    setData((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
-  // handle list dalam list (contoh: description di experience)
-  const handleNestedArrayChange = (
-    section,
-    index,
-    subfield,
-    subIndex,
-    value
-  ) => {
-    const newArr = [...data[section]];
-    newArr[index][subfield][subIndex] = value;
-    setData({ ...data, [section]: newArr });
-  };
+  // ── array of objects (experience, education, etc.) ───────────────────────
+  const handleArrayChange = useCallback((section, index, field, value) => {
+    setData((prev) => {
+      const newArr = [...prev[section]];
+      newArr[index] = { ...newArr[index], [field]: value };
+      return { ...prev, [section]: newArr };
+    });
+  }, []);
 
-  // tambah item baru
-  const addItem = (section, templateObj) => {
-    setData({ ...data, [section]: [...data[section], templateObj] });
+  // ── nested array (description inside experience) ─────────────────────────
+  const handleNestedArrayChange = useCallback(
+    (section, index, subfield, subIndex, value) => {
+      setData((prev) => {
+        const newArr = prev[section].map((item, i) => {
+          if (i !== index) return item;
+          const newSub = [...item[subfield]];
+          newSub[subIndex] = value;
+          return { ...item, [subfield]: newSub };
+        });
+        return { ...prev, [section]: newArr };
+      });
+    },
+    []
+  );
+
+  // ── add item ─────────────────────────────────────────────────────────────
+  const addItem = useCallback((section, templateObj) => {
+    setData((prev) => ({
+      ...prev,
+      [section]: [...prev[section], { ...templateObj }],
+    }));
+  }, []);
+
+  // ── remove item (array of objects) ───────────────────────────────────────
+  const removeItem = useCallback((section, index) => {
+    setData((prev) => ({
+      ...prev,
+      [section]: prev[section].filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  // ── expertise (plain string array) ───────────────────────────────────────
+  const handleExpertiseChange = useCallback((index, value) => {
+    setData((prev) => {
+      const newArr = [...prev.expertise];
+      newArr[index] = value;
+      return { ...prev, expertise: newArr };
+    });
+  }, []);
+
+  const removeExpertise = useCallback((index) => {
+    setData((prev) => ({
+      ...prev,
+      expertise: prev.expertise.filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  // ── add description line inside experience ────────────────────────────────
+  const addDescriptionLine = useCallback((expIndex) => {
+    setData((prev) => {
+      const newExp = prev.experience.map((item, i) => {
+        if (i !== expIndex) return item;
+        return { ...item, description: [...item.description, ""] };
+      });
+      return { ...prev, experience: newExp };
+    });
+  }, []);
+
+  const removeDescriptionLine = useCallback((expIndex, descIndex) => {
+    setData((prev) => {
+      const newExp = prev.experience.map((item, i) => {
+        if (i !== expIndex) return item;
+        return {
+          ...item,
+          description: item.description.filter((_, j) => j !== descIndex),
+        };
+      });
+      return { ...prev, experience: newExp };
+    });
+  }, []);
+
+  // ── reset all ─────────────────────────────────────────────────────────────
+  const handleReset = () => {
+    if (window.confirm("Reset semua data? Tindakan ini tidak bisa dibatalkan.")) {
+      localStorage.removeItem(STORAGE_KEY);
+      setData(defaultData);
+    }
   };
 
   return (
     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* === FORM BUILDER === */}
+      {/* ════════════════════════════════ FORM ════════════════════════════════ */}
       <div className="space-y-6">
-        <h1 className="text-xl font-bold mb-4">Isi Data CV</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold">Isi Data CV</h1>
+          <button
+            className="btn btn-sm btn-error btn-outline"
+            onClick={handleReset}
+          >
+            Reset Data
+          </button>
+        </div>
 
-        {/* Basic Info */}
+        {/* ── Basic Info ── */}
         <div className="space-y-2">
-          <input
-            className="input input-bordered w-full"
-            placeholder="Name"
-            value={data.name}
-            onChange={(e) => handleChange("name", e.target.value)}
-          />
-          <input
-            className="input input-bordered w-full"
-            placeholder="Role"
-            value={data.role}
-            onChange={(e) => handleChange("role", e.target.value)}
-          />
-          <input
-            className="input input-bordered w-full"
-            placeholder="Address"
-            value={data.address}
-            onChange={(e) => handleChange("address", e.target.value)}
-          />
-          <input
-            className="input input-bordered w-full"
-            placeholder="Email"
-            value={data.email}
-            onChange={(e) => handleChange("email", e.target.value)}
-          />
-          <input
-            className="input input-bordered w-full"
-            placeholder="Phone"
-            value={data.phone}
-            onChange={(e) => handleChange("phone", e.target.value)}
-          />
-          <input
-            className="input input-bordered w-full"
-            placeholder="Linkedin"
-            value={data.linkedin}
-            onChange={(e) => handleChange("linkedin", e.target.value)}
-          />
-          <input
-            className="input input-bordered w-full"
-            placeholder="Github"
-            value={data.github}
-            onChange={(e) => handleChange("github", e.target.value)}
-          />
+          {[
+            ["name", "Name"],
+            ["role", "Role"],
+            ["address", "Address"],
+            ["email", "Email"],
+            ["phone", "Phone"],
+            ["linkedin", "LinkedIn"],
+            ["github", "GitHub"],
+          ].map(([field, placeholder]) => (
+            <input
+              key={field}
+              className="input input-bordered w-full"
+              placeholder={placeholder}
+              value={data[field]}
+              onChange={(e) => handleChange(field, e.target.value)}
+            />
+          ))}
           <textarea
             className="textarea textarea-bordered w-full"
             placeholder="Profile"
@@ -119,37 +187,41 @@ const Template = () => {
           />
         </div>
 
-        {/* Expertise */}
-        <div>
-          <h2 className="font-bold">Expertise</h2>
+        {/* ── Expertise ── */}
+        <Section title="Expertise">
           {data.expertise.map((exp, i) => (
-            <input
-              key={i}
-              className="input input-bordered w-full my-1"
-              placeholder="Expertise"
-              value={exp}
-              onChange={(e) => {
-                const newArr = [...data.expertise];
-                newArr[i] = e.target.value;
-                setData({ ...data, expertise: newArr });
-              }}
-            />
+            <div key={i} className="flex gap-2 my-1">
+              <input
+                className="input input-bordered flex-1"
+                placeholder="Expertise"
+                value={exp}
+                onChange={(e) => handleExpertiseChange(i, e.target.value)}
+              />
+              {data.expertise.length > 1 && (
+                <DeleteButton onClick={() => removeExpertise(i)} />
+              )}
+            </div>
           ))}
-          <button
-            className="btn btn-sm btn-outline mt-2"
+          <AddButton
+            label="+ Add Expertise"
             onClick={() =>
-              setData({ ...data, expertise: [...data.expertise, ""] })
+              setData((prev) => ({
+                ...prev,
+                expertise: [...prev.expertise, ""],
+              }))
             }
-          >
-            + Add Expertise
-          </button>
-        </div>
+          />
+        </Section>
 
-        {/* Experience */}
-        <div>
-          <h2 className="font-bold">Experience</h2>
+        {/* ── Experience ── */}
+        <Section title="Experience">
           {data.experience.map((exp, i) => (
-            <div key={i} className="border p-2 mb-2 rounded">
+            <div key={i} className="border p-3 mb-3 rounded relative">
+              <SectionItemHeader
+                label={`Experience ${i + 1}`}
+                canDelete={data.experience.length > 1}
+                onDelete={() => removeItem("experience", i)}
+              />
               <input
                 className="input input-bordered w-full my-1"
                 placeholder="Title"
@@ -192,39 +264,39 @@ const Template = () => {
                   }
                 />
               </div>
-              <h3 className="text-sm font-semibold mt-2">Description</h3>
+              <p className="text-sm font-semibold mt-2 mb-1">Description</p>
               {exp.description.map((d, j) => (
-                <input
-                  key={j}
-                  className="input input-bordered w-full my-1"
-                  placeholder="Description item"
-                  value={d}
-                  onChange={(e) =>
-                    handleNestedArrayChange(
-                      "experience",
-                      i,
-                      "description",
-                      j,
-                      e.target.value
-                    )
-                  }
-                />
+                <div key={j} className="flex gap-2 my-1">
+                  <input
+                    className="input input-bordered flex-1"
+                    placeholder="Description item"
+                    value={d}
+                    onChange={(e) =>
+                      handleNestedArrayChange(
+                        "experience",
+                        i,
+                        "description",
+                        j,
+                        e.target.value
+                      )
+                    }
+                  />
+                  {exp.description.length > 1 && (
+                    <DeleteButton
+                      onClick={() => removeDescriptionLine(i, j)}
+                    />
+                  )}
+                </div>
               ))}
-              <button
-                className="btn btn-xs btn-outline mt-1"
-                onClick={() =>
-                  handleArrayChange("experience", i, "description", [
-                    ...exp.description,
-                    "",
-                  ])
-                }
-              >
-                + Add Description
-              </button>
+              <AddButton
+                label="+ Add Description"
+                size="xs"
+                onClick={() => addDescriptionLine(i)}
+              />
             </div>
           ))}
-          <button
-            className="btn btn-sm btn-outline"
+          <AddButton
+            label="+ Add Experience"
             onClick={() =>
               addItem("experience", {
                 title: "",
@@ -235,16 +307,18 @@ const Template = () => {
                 description: [""],
               })
             }
-          >
-            + Add Experience
-          </button>
-        </div>
+          />
+        </Section>
 
-        {/* Education */}
-        <div>
-          <h2 className="font-bold">Education</h2>
+        {/* ── Education ── */}
+        <Section title="Education">
           {data.education.map((edu, i) => (
-            <div key={i} className="border p-2 mb-2 rounded">
+            <div key={i} className="border p-3 mb-3 rounded">
+              <SectionItemHeader
+                label={`Education ${i + 1}`}
+                canDelete={data.education.length > 1}
+                onDelete={() => removeItem("education", i)}
+              />
               <input
                 className="input input-bordered w-full my-1"
                 placeholder="Title"
@@ -294,8 +368,8 @@ const Template = () => {
               </div>
             </div>
           ))}
-          <button
-            className="btn btn-sm btn-outline"
+          <AddButton
+            label="+ Add Education"
             onClick={() =>
               addItem("education", {
                 title: "",
@@ -305,16 +379,18 @@ const Template = () => {
                 to: "",
               })
             }
-          >
-            + Add Education
-          </button>
-        </div>
+          />
+        </Section>
 
-        {/* Certifications */}
-        <div>
-          <h2 className="font-bold">Certifications</h2>
+        {/* ── Certifications ── */}
+        <Section title="Certifications">
           {data.certifications.map((cert, i) => (
-            <div key={i} className="border p-2 mb-2 rounded">
+            <div key={i} className="border p-3 mb-3 rounded">
+              <SectionItemHeader
+                label={`Certification ${i + 1}`}
+                canDelete={data.certifications.length > 1}
+                onDelete={() => removeItem("certifications", i)}
+              />
               <input
                 className="input input-bordered w-full my-1"
                 placeholder="Title"
@@ -346,21 +422,23 @@ const Template = () => {
               />
             </div>
           ))}
-          <button
-            className="btn btn-sm btn-outline"
+          <AddButton
+            label="+ Add Certification"
             onClick={() =>
               addItem("certifications", { title: "", note: "", date: "" })
             }
-          >
-            + Add Certification
-          </button>
-        </div>
+          />
+        </Section>
 
-        {/* Skills */}
-        <div>
-          <h2 className="font-bold">Skills</h2>
+        {/* ── Skills ── */}
+        <Section title="Skills">
           {data.skills.map((skill, i) => (
-            <div key={i} className="border p-2 mb-2 rounded">
+            <div key={i} className="border p-3 mb-3 rounded">
+              <SectionItemHeader
+                label={`Skill ${i + 1}`}
+                canDelete={data.skills.length > 1}
+                onDelete={() => removeItem("skills", i)}
+              />
               <input
                 className="input input-bordered w-full my-1"
                 placeholder="Skill Name"
@@ -371,43 +449,45 @@ const Template = () => {
               />
               <input
                 type="number"
+                min={0}
+                max={100}
                 className="input input-bordered w-full my-1"
-                placeholder="Percent"
+                placeholder="Percent (0-100)"
                 value={skill.percent}
                 onChange={(e) =>
                   handleArrayChange(
                     "skills",
                     i,
                     "percent",
-                    parseInt(e.target.value, 10)
+                    Math.min(100, Math.max(0, parseInt(e.target.value, 10) || 0))
                   )
                 }
               />
             </div>
           ))}
-          <button
-            className="btn btn-sm btn-outline"
+          <AddButton
+            label="+ Add Skill"
             onClick={() => addItem("skills", { title: "", percent: 0 })}
-          >
-            + Add Skill
-          </button>
-        </div>
+          />
+        </Section>
       </div>
 
-      {/* === PDF PREVIEW + DOWNLOAD === */}
+      {/* ════════════════════════════ PDF PREVIEW ════════════════════════════ */}
       <div className="flex flex-col items-center">
         <h2 className="text-xl font-bold mb-4">Preview & Download</h2>
         {id === "1" ? (
           <>
-            <PDFViewer width="100%" height="60%" className="mb-3">
+            <PDFViewer width="100%" height="600px" className="mb-3">
               <Template1 data={data} />
             </PDFViewer>
             <PDFDownloadLink
               document={<Template1 data={data} />}
               fileName="cv-template1.pdf"
-              className="btn btn-primary"
+              className="btn btn-primary mt-2"
             >
-              Download CV (PDF)
+              {({ loading }) =>
+                loading ? "Generating PDF..." : "Download CV (PDF)"
+              }
             </PDFDownloadLink>
           </>
         ) : (
@@ -417,5 +497,50 @@ const Template = () => {
     </div>
   );
 };
+
+// ── Shared small components ────────────────────────────────────────────────
+
+const Section = ({ title, children }) => (
+  <div>
+    <h2 className="font-bold text-base mb-2">{title}</h2>
+    {children}
+  </div>
+);
+
+const SectionItemHeader = ({ label, canDelete, onDelete }) => (
+  <div className="flex items-center justify-between mb-1">
+    <span className="text-xs text-gray-500 font-medium">{label}</span>
+    {canDelete && (
+      <button
+        type="button"
+        className="btn btn-xs btn-error btn-outline"
+        onClick={onDelete}
+      >
+        Hapus
+      </button>
+    )}
+  </div>
+);
+
+const DeleteButton = ({ onClick }) => (
+  <button
+    type="button"
+    className="btn btn-sm btn-error btn-outline px-2"
+    onClick={onClick}
+    aria-label="Hapus"
+  >
+    ✕
+  </button>
+);
+
+const AddButton = ({ label, onClick, size = "sm" }) => (
+  <button
+    type="button"
+    className={`btn btn-${size} btn-outline mt-2`}
+    onClick={onClick}
+  >
+    {label}
+  </button>
+);
 
 export default Template;
